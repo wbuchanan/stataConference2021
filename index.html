@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+
+	<title>Beyond n-grams, tf-idf, and word indicators for text</title>
+
+	<meta name="description" content="2021 Stata Conference presentation on using vector embeddings in Stata">
+	<meta name="author" content="Billy Buchanan">
+
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+	<link rel="stylesheet" href="dist/reset.css">
+	<link rel="stylesheet" href="dist/reveal.css">
+	<link rel="stylesheet" href="dist/theme/black.css" id="theme">
+
+	<!-- Theme used for syntax highlighting of code
+	This theme seems to provide better color contrast with the dark background
+	-->
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.1.0/styles/xt256.min.css">
+	<style>
+		a {
+			color: white !important;
+		}
+	</style>
+</head>
+
+<body>
+
+<div class="reveal">
+
+	<!-- Any section element inside of this container is displayed as a slide -->
+	<div class="slides">
+		<section>
+			<section>
+				<h5>If you want to follow along:</h5>
+				<p>There are scripts and instructions available here:</p><br>
+				<p><a href="https://github.com/wbuchanan/stataConference2021" target="_blank">https://github.com/wbuchanan/stataConference2021</a></p><br>
+				<p>Some of the installation can take a bit of time, so you may want to start downloading/installing now.</p>
+			</section>
+			<section>
+				<h2>Beyond n-grams, tf-idf, and word indicators for text:</h2>
+				<h3>Leveraging the Python API for vector embeddings</h3><br>
+				<a href="https://github.com/wbuchanan" target="_blank">Billy Buchanan</a><br>
+				<span>Senior Research Scientist</span><br>
+				<span><a href="https://sagcorp.com/" target="_blank">SAG Corporation</a></span>
+				<aside class="notes">
+					<p>I'm going to move a bit faster when introducing the concepts but will try to slow things down a
+					bit once I get to the code snippets in case anyone is interested in following along.  If you have
+					any questions feel free to put them into the chat/Q&A feature.</p>
+					<p>This talk will share strategies that Stata users can use to get more
+						informative word, sentence, and document vector embeddings of text
+						in their data. While indicator and bag-of-words strategies can be
+						useful for some types of text analytics, they lack the richness of
+						the semantic relationships between words that provide meaning and
+						structure to language. Vector space embeddings attempt to preserve
+						these relationships and in doing so can provide more robust numerical
+						representations of text data that can be used for subsequent analysis.
+						I will share strategies for using existing tools from the Python
+						ecosystem with Stata to leverage the advances in NLP in your Stata
+						workflow.</p>
+				</aside>
+			</section>
+		</section>
+		<section>
+			<section>
+				<h3>Motivation</h3>
+				<ul>
+					<li>Bag of Words (BoW) models are not always capable of modeling the meaning in natural language.</li>
+					<li>BoW, TF-IDF, and N-grams typically result in highly sparse matrices with large dimensions.</li>
+					<li>Because word order can affect semantics these methods can introduce substantial error into your models.</li>
+				</ul>
+				<aside class="notes">
+					<ul>
+						<li>NLP ultimately is about the meaning and/or ideas communicated using language.</li>
+						<li>I'll show some examples that illustrate how indicators, bags of words, and TF-IDF would return the same vectors despite the meaning of the sentences being different.</li>
+						<li>Sometimes the subject or object being modified can be more or less distant to its modifiers.  I'll share some examples of this as well.</li>
+						<li>For a classic example "The dog bit the cat" and "The cat bit the dog" very clearly mean two different things, but with the simpler methods both would have the same vector representing the sentences.</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<table style="width: fit-content !important; font-size: 0.95rem !important;">
+					<caption>Bag of Words Example of Meaning Varying by Word Order<sup><a href="https://www.city-data.com/forum/writing/1115620-two-sentences-have-same-words-but-2.html#post16932155" target="_blank">1</a></sup></caption>
+					<colgroup>
+						<col span="1" style="width: 5% !important;"><col span="1" style="width: 55% !important;">
+						<col span="1" style="width: 5% !important;"><col span="1" style="width: 5% !important;">
+						<col span="1" style="width: 5% !important;"><col span="1" style="width: 5% !important;">
+						<col span="1" style="width: 5% !important;"><col span="1" style="width: 5% !important;">
+						<col span="1" style="width: 5% !important;"><col span="1" style="width: 5% !important;">
+					</colgroup>
+					<tr>
+						<td></td><td></td><td colspan="8" style="text-align: center;">Bag of Words Vector</td>
+					</tr>
+					<tr>
+						<th>ID</th><th>Sentence</th><th>he</th><th>his</th><th>her</th>
+						<th>loved</th><th>only</th><th>that</th><th>told</th><th>wife</th>
+					</tr>
+					<tr>
+						<td>1</td><td>Only he told his wife that he loved her.</td>
+						<td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+					</tr>
+					<tr>
+						<td>2</td><td>He only told his wife that he loved her.</td>
+						<td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+					</tr>
+					<tr>
+						<td>3</td><td>He told only his wife that he loved her.</td>
+						<td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+					</tr>
+					<tr>
+						<td>4</td><td>He told his only wife that he loved her.</td>
+						<td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+					</tr>
+					<tr>
+						<td>5</td><td>He told his wife only that he loved her.</td>
+						<td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+					</tr>
+					<tr>
+						<td>6</td><td>He told his wife that only he loved her.</td>
+						<td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+					</tr>
+					<tr>
+						<td>7</td><td>He told his wife that he only loved her.</td>
+						<td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+					</tr>
+					<tr>
+						<td>8</td><td>He told his wife that he loved only her.</td>
+						<td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+					</tr>
+					<tr>
+						<td>9</td><td>He told his wife that he loved her only.</td>
+						<td>2</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+					</tr>
+				</table><br>
+				<small>Do these sentences all mean the same thing?</small>
+				<small>How would a model built on the bag of words vectors distinguish between the meanings?</small>
+				<aside class="notes">
+					<ul>
+						<li>The examples here are modified from a forum on the website city-data.com.  Click on the superscript to see the original examples.</li>
+						<li>If these were notes taken by psychologists observing couples trying to model the likelihood of divorce, would each of these sentences indicate the same relationship?</li>
+						<li>N-grams could be a little useful, but to capture the difference between each of the different sentences would require the use of multiple n-grams (which isn't horrible, but can be more computationally expensive).</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<table style="width: fit-content !important; margin-left: -7.5% !important; font-size: 0.95rem !important;">
+					<caption>N-Gram Example of Meaning Varying by Word Order<sup><a href="https://www.city-data.com/forum/writing/1115620-two-sentences-have-same-words-but-2.html#post16932155" target="_blank">1</a></sup></caption>
+					<colgroup>
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;"><col span="1" style="width: 4% !important;">
+					</colgroup>
+					<tr>
+						<td></td>
+						<td colspan="22" style="text-align: center;">N-Gram Vector</td>
+					</tr>
+					<tr>
+						<th>Sentence ID</th>
+						<th>only he</th><th>he told</th><th>told his</th><th>his wife</th><th>wife that</th><th>that he</th>
+						<th>he loved</th><th>loved her</th><th>he only</th><th>only told</th><th>told only</th><th>only his</th>
+						<th>his only</th><th>only wife</th><th>wife only</th><th>only that</th><th>that only</th><th>only he</th>
+						<th>only loved</th><th>loved only</th><th>only her</th><th>her only</th>
+					</tr>
+					<tr>
+						<td>1</td>
+						<td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+						<td>1</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td>
+					</tr>
+					<tr>
+						<td>2</td>
+						<td>0</td><td>0</td><td>1</td><td>1</td><td>1</td><td>1</td>
+						<td>1</td><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td>
+					</tr>
+					<tr>
+						<td>3</td>
+						<td>0</td><td>1</td><td>0</td><td>1</td><td>1</td><td>1</td>
+						<td>1</td><td>1</td><td>0</td><td>0</td><td>1</td><td>1</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td>
+					</tr>
+					<tr>
+						<td>4</td>
+						<td>0</td><td>1</td><td>1</td><td>0</td><td>1</td><td>1</td>
+						<td>1</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>1</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td>
+					</tr>
+					<tr>
+						<td>5</td>
+						<td>0</td><td>1</td><td>1</td><td>1</td><td>0</td><td>1</td>
+						<td>1</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>1</td><td>1</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td>
+					</tr>
+					<tr>
+						<td>6</td>
+						<td>0</td><td>1</td><td>1</td><td>1</td><td>1</td><td>0</td>
+						<td>1</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>1</td><td>1</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td>
+					</tr>
+					<tr>
+						<td>7</td>
+						<td>0</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+						<td>0</td><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>1</td><td>0</td><td>0</td><td>0</td>
+					</tr>
+					<tr>
+						<td>8</td>
+						<td>0</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+						<td>1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>1</td><td>1</td><td>0</td>
+					</tr>
+					<tr>
+						<td>9</td>
+						<td>0</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td>
+						<td>1</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>0</td><td>0</td><td>0</td><td>1</td>
+					</tr>
+				</table><br>
+				<small>To accurately model the meaning of the sentences, how much sparser would the matrix need to get?</small>
+				<small>How many different n-grams would need to be used to capture that information?</small>
+				<aside class="notes">
+					<ul>
+						<li>With bi-grams we can see how the matrix begins to becoming more sparse.</li>
+						<li>Although dimensionality on it's own may not be a problem, it becomes a bigger issue in the context of sparse matrices.</li>
+						<li>Bi-grams are able to capture a little bit of additional information, but it still doesn't capture everything.</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<h3>How do the simpler methods work when trying to measure some form of sentiment?</h3>
+			</section>
+			<section>
+				<table style="width: fit-content !important; font-size: 0.95rem !important;">
+					<caption>BoW Example for Sentiment</caption>
+					<colgroup>
+						<col span="1" style="width: 3% !important;"><col span="1" style="width: 60% !important;">
+						<col span="1" style="width: 3% !important;"><col span="1" style="width: 3% !important;">
+						<col span="1" style="width: 3% !important;"><col span="1" style="width: 3% !important;">
+						<col span="1" style="width: 3% !important;"><col span="1" style="width: 3% !important;">
+						<col span="1" style="width: 3% !important;"><col span="1" style="width: 3% !important;">
+						<col span="1" style="width: 3% !important;"><col span="1" style="width: 3% !important;">
+						<col span="1" style="width: 3% !important;"><col span="1" style="width: 3% !important;">
+						<col span="1" style="width: 3% !important;"><col span="1" style="width: 3% !important;">
+						<col span="1" style="width: 3% !important;"><col span="1" style="width: 3% !important;">
+						<col span="1" style="width: 3% !important;">
+					</colgroup>
+					<tr>
+						<td></td><td></td>
+						<td colspan="17" style="text-align: center;">BoW Vector</td>
+					</tr>
+					<tr>
+						<th>Sentence ID</th><th>Sentence</th>
+						<th>I</th><th>apples</th><th>are</th><th>as</th><th>bad</th>
+						<th>be</th><th>did</th><th>expect</th><th>expected</th><th>half</th>
+						<th>not</th><th>of</th><th>the</th><th>this</th><th>to</th>
+						<th>were</th><th>would</th>
+					</tr>
+					<tr>
+						<td>1</td><td>I did not expect the apples to be this bad.</td>
+						<td>1</td><td>1</td><td>0</td><td>0</td><td>1</td>
+						<td>1</td><td>1</td><td>1</td><td>0</td><td>0</td>
+						<td>1</td><td>0</td><td>1</td><td>1</td><td>1</td>
+						<td>0</td><td>0</td>
+					</tr>
+					<tr>
+						<td>2</td><td>This half of the apples are bad.</td>
+						<td>0</td><td>1</td><td>1</td><td>0</td><td>1</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>1</td>
+						<td>0</td><td>1</td><td>1</td><td>1</td><td>0</td>
+						<td>0</td><td>0</td>
+					</tr>
+					<tr>
+						<td>3</td><td>The apples were not half bad.</td>
+						<td>0</td><td>1</td><td>0</td><td>0</td><td>1</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>1</td>
+						<td>1</td><td>0</td><td>1</td><td>0</td><td>0</td>
+						<td>1</td><td>0</td>
+					</tr>
+					<tr>
+						<td>4</td><td>Half of the apples were not bad.</td>
+						<td>0</td><td>1</td><td>0</td><td>0</td><td>1</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>1</td>
+						<td>1</td><td>1</td><td>1</td><td>0</td><td>0</td>
+						<td>1</td><td>0</td>
+					</tr>
+					<tr>
+						<td>5</td><td>The apples were not half as bad as I expected.</td>
+						<td>1</td><td>1</td><td>0</td><td>2</td><td>1</td>
+						<td>0</td><td>0</td><td>0</td><td>1</td><td>1</td>
+						<td>1</td><td>0</td><td>1</td><td>0</td><td>0</td>
+						<td>1</td><td>0</td>
+					</tr>
+					<tr>
+						<td>6</td><td>I expected the apples would not be half bad.</td>
+						<td>1</td><td>1</td><td>0</td><td>0</td><td>1</td>
+						<td>1</td><td>0</td><td>0</td><td>1</td><td>1</td>
+						<td>1</td><td>0</td><td>1</td><td>0</td><td>0</td>
+						<td>0</td><td>1</td>
+					</tr>
+					<tr>
+						<td>7</td><td>The apples were not bad.</td>
+						<td>0</td><td>1</td><td>0</td><td>0</td><td>1</td>
+						<td>0</td><td>0</td><td>0</td><td>0</td><td>0</td>
+						<td>1</td><td>0</td><td>1</td><td>0</td><td>0</td>
+						<td>1</td><td>0</td>
+					</tr>
+				</table><br>
+				<small></small>
+				<aside class="notes">
+					<ul>
+						<li></li>
+						<li></li>
+						<li></li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<table style="font-size: 0.95rem !important;">
+					<caption>Cosine Distances Between Sentiment Examples</caption>
+					<colgroup>
+						<col span="1" style="width: 60% !important;">
+						<col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;">
+						<col span="1" style="width: 4% !important;">
+					</colgroup>
+					<tr><th></th><th colspan="7" style="text-align: center;">Distance to Other Sentence</th></tr>
+					<tr><th>Source Sentence</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th></tr>
+					<tr><td>I did not expect the apples to be this bad.</td><td>0</td><td>0.48</td><td>0.52</td><td>0.48</td><td>0.46</td><td>0.63</td><td>0.57</td></tr>
+					<tr><td>This half of the apples are bad.</td><td>0.48</td><td>0</td><td>0.62</td><td>0.71</td><td>0.44</td><td>0.50</td><td>0.51</td></tr>
+					<tr><td>The apples were not half bad.</td><td>0.52</td><td>0.62</td><td>0</td><td>0.93</td><td>0.71</td><td>0.68</td><td>0.91</td></tr>
+					<tr><td>Half of the apples were not bad.</td><td>0.48</td><td>0.71</td><td>0.93</td><td>0</td><td>0.65</td><td>0.63</td><td>0.85</td></tr>
+					<tr><td>The apples were not half as bad as I expected.</td><td>0.46</td><td>0.44</td><td>0.71</td><td>0.65</td><td>0</td><td>0.67</td><td>0.65</td></tr>
+					<tr><td>I expected the apples would not be half bad.</td><td>0.63</td><td>0.50</td><td>0.68</td><td>0.63</td><td>0.67</td><td>0</td><td>0.60</td></tr>
+					<tr><td>The apples were not bad.</td><td>0.57</td><td>0.51</td><td>0.91</td><td>0.85</td><td>0.65</td><td>0.60</td><td>0</td></tr>
+				</table><br>
+				<small>Do these distances accurately reflect how similar you would judge the sentiment contained in the sentences?</small>
+				<aside class="notes">
+					<ul>
+						<li>If you compare the first and last sentences, you'll see that they are closer than the first and sixth sentence.</li>
+						<li>This is counterintuitive, to say the least, because the last sentence indicates all apples were not in a negative state, while the sixth sentence contains a more ambiguous sentiment.</li>
+						<li>Similarly, sentence 2 (This half of the apples are bad) is closer to sentence 5 (The apples were not half as bad as I expected) than it is to sentence 4 (Half of the apples were not bad).</li>
+						<li>This is problematic since sentence 2 conveys negative sentiment and sentence 5 conveys a positive sentiment while sentence 4 conveys a more ambiguous sentiment.</li>
+					</ul>
+				</aside>
+			</section>
+			<section data-autoslide="4000">
+				<h3>How do vector embeddings solve these issues?</h3>
+			</section>
+			<section>
+				<ul>
+					<li>Reduces sparsity of the data matrix.</li>
+					<li>Uses a fixed number of dimensions to represent word meanings and context simultaneously.</li>
+					<li>Vector embeddings can be aggregated to generate embeddings for hierarchical units of language.</li>
+					<li>Can provide information based on the character/sub-word level that is informative.</li>
+				</ul>
+				<aside class="notes">
+					<ul>
+						<li>Vector embeddings are fixed dimensional representations of the words unlike bag of words/TF-IDF which grow as a function of the number of unique tokens in the corpus.</li>
+						<li>Many deep neural network-based methods will return hundreds, thousands, or more dimensions in their embeddings.</li>
+						<li>While the simpler methods could also be aggregated, it isn't clear if it would be beneficial.</li>
+						<li>For example, using fastText and other similar models, the n-gram embeddings at the character level are aggregated with character vectors to form the word vector.</li>
+						<li>This particular feature is important when many words share similar meanings via construction and morphological features.</li>
+					</ul>
+				</aside>
+			</section>
+			<section data-autoslide="4000">
+				<h3>Vector embeddings are not the panacea to your NLP related problems</h3>
+			</section>
+			<section>
+				<h4>Limitations/Disadvantages</h4>
+				<ul>
+					<li>Interpretability</li>
+					<li>Reproducibility<sup>*</sup></li>
+					<li>Domain Specificity/Generalizability</li>
+					<li>Computational Time<sup>*</sup></li>
+				</ul>
+				<aside class="notes">
+					<ul>
+						<li>Unlike indicators for individual tokens, there isn't an easy way to interpret the dimensions of a word embedding.</li>
+						<li>While interpretability of the individual dimensions isn't an issue in the context of predictive modeling, embeddings may not be useful if the interest is in estimating parameters related to individual words.</li>
+						<li>Depending on the model and package being used, it may not be possible/easy to reproduce the embeddings exactly.</li>
+						<li>This is due to the use of a randomized starting vector and/or tuning the model to your data via tuning/training.</li>
+						<li>Any modern language model will necessarily have some degree of domain specificity inherent to it.  This means that while one pre-trained model may be amazing for one task, it may behave like Donald Trump not getting his way with your data and throw a huge temper tantrum.</li>
+						<li>However, there are new language models being released and shared all the time which may be close enough to your use case to be useful.</li>
+						<li>It can definitely take longer at times to get word embeddings and push them back into Stata compared with creating Bag of Words representations.</li>
+						<li>If you are tuning a pre-trained model to your data, the computational overhead can definitely increase significantly.</li>
+						<li>In that case, I would strongly recommend using a system that has one or more GPUs available so you can get the benefit of the GPUs while tuning/training the model generating the embeddings.</li>
+					</ul>
+				</aside>
+			</section>
+		</section>
+
+		<section>
+			<section data-autoslide="4500">
+				<h3>Getting Started</h3>
+			</section>
+			<section>
+				<table style="font-size: 2rem !important; width: fit-content !important;">
+					<caption>Python Packages for Vector Embeddings</caption>
+					<tr>
+						<th>Package Name</th><th>CUDA</th><th>pip</th><th>conda</th>
+					</tr>
+					<tr>
+						<td><a href="https://spacy.io/" target="_blank">spaCy</a><sup>*&#8224;</sup></td><td>Y</td><td>Y</td><td>Y</td>
+					</tr>
+					<tr>
+						<td><a href="https://huggingface.co/transformers/" target="_blank">transformers</a><sup>*&#8224;</sup></td><td>Y</td><td>Y</td><td>Y</td>
+					</tr>
+					<tr>
+						<td><a href="https://radimrehurek.com/gensim/#" target="_blank">gensim</a><sup>*</sup></td><td>N</td><td>Y</td><td>Y</td>
+					</tr>
+					<tr>
+						<td><a href="https://nlp.stanford.edu/projects/glove/" target="_blank">GloVe</a></td><td>N</td><td>Y</td><td>Y</td>
+					</tr>
+					<tr>
+						<td><a href="https://fasttext.cc/" target="_blank">fastText</a></td><td>N</td><td>Y</td><td>Y</td>
+					</tr>
+					<tr>
+						<td><a href="https://textblob.readthedocs.io/en/dev/" target="_blank">TextBlob</a></td><td>N</td><td>Y</td><td>Y</td>
+					</tr>
+					<tr>
+						<td><a href="https://www.nltk.org/" target="_blank">NLTK<sup>&#8225;</sup></a></td><td>N</td><td>Y</td><td>Y</td>
+					</tr>
+					<tr>
+						<td><a href="" target="_blank">simplerepresentations</a></td><td>N/A</td><td>Y</td><td>N</td>
+					</tr>
+				</table>
+				<div style="width: 125% !important;">
+					<small style="font-size: 1.15rem !important;"><sup>*</sup> These packages provide access to several pre-trained models used to generate vector embeddings.</small>
+					<small style="font-size: 1.15rem !important;"><sup>&#8224;</sup> These packages will be used for subsequent examples.</small>
+					<small style="font-size: 1.15rem !important;"><sup>&#8225;</sup> While the Natural Language ToolKit (NLTK) doesn't provide word embeddings, it has a lot of other useful tools for working with text.</small>
+				</div>
+				<aside class="notes">
+					<ul>
+						<li>Here is a list of packages that you should be able to install using pip or conda.</li>
+						<li>I'm only going to use a few of these packages for the examples, but know there are many packages and models to do this work in the Python ecosystem.</li>
+						<li>For the sake of flexibility, simplicity, and speed, we'll focus on just a couple of examples using transformers and spaCy</li>
+						<li>Simplerepresentations is a wrapper module so it relies on transformers under the hood.</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<h5>Installing spaCy</h5>
+				<pre data-id="code-animation" style="width: fit-content !important; font-size: 0.95rem !important;"><code class="hljs" data-trim data-line-numbers="1-6,12-15|1-2,7-8,12-15|1,2,9-15|12,13|14,15"><script type="text/template">
+				# Installing spaCy using pip
+				$ pip install -U pip setuptools wheel
+				# Use this line if you have no intention to train models
+				$ pip install -U spacy
+				# Or to install using conda:
+				$ conda install -c conda-forge spacy
+				# Use this line instead if you want to be able to train models
+				$ pip install -U spacy[transformers,lookups]
+				# If you want to add CUDA support, add it as an option like this:
+				# where the ### following cuda is the version number (e.g., 102 = CUDA 10.2)
+				$ pip install -U spacy[cuda111,transformers,lookups]
+				# This is necessary before using spaCy and downloads the pretrained model
+				$ python -m spacy download en_core_web_sm
+				# For the accuracy optimized pre-trained model use this line instead
+				$ python -m spacy download en_core_web_lg
+				</script></code></pre>
+				<aside class="notes">
+					<ul>
+						<li>I opted to go the route of installing for accuracy instead of speed.</li>
+						<li>There is a fairly large number of dependencies that get installed with spaCy including:
+							<ul>
+								<li>catalogue</li>
+								<li>cymem</li>
+								<li>cython-blis</li>
+								<li>murmurhash</li>
+								<li>pathy</li>
+								<li>preshed</li>
+								<li>pydantic</li>
+								<li>shellingham</li>
+								<li>smart_open</li>
+								<li>spacy-legacy</li>
+								<li>srsly</li>
+								<li>thinc</li>
+								<li>typer</li>
+								<li>wasabi</li>
+							</ul>
+						</li>
+						<li>Downloading the model can take a bit of time, so be patient.</li>
+						<li>The large model is roughly 777 MB and the medium model is 48MB.  The difference is in the number of tokens included in the model.</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<h5>Installing Transformers</h5>
+				<pre data-id="code-animation" style="width: fit-content !important; font-size: 1.15rem !important;">
+					<code class="hljs" data-trim data-line-numbers="1-8|3-4,9-12"><script type="text/template">
+				# If TensorFlow 2.0 and/or PyTorch are already installed
+				$ pip install transformers
+				# For CPU support via PyTorch:
+				$ pip install transformers[torch]
+				# For CPU support via TensorFlow
+				$ pip install transformers[tf-cpu]
+				# To install with Flax
+				$ pip install transformers[flax]
+				# To install via conda
+				$ conda install -c huggingface transformers
+				# If you plan to use transformers, you may want to use this module as well
+				$ pip install simplerepresentations
+				</script></code></pre>
+				<aside class="notes">
+					<ul>
+						<li>I created/tested this on my 2013 MacBook Pro, so I went with conda</li>
+						<li>This also involves installing the huggingface hub, protobuf, sacremoses, tokenizers, and typing-extensions packages as well.</li>
+						<li>Torch is roughly 128MB in size.</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<h3>Get Stata's Python Interpretter Up and Running</h3>
+				<pre data-id="code-animation" style="width: fit-content !important; font-size: 1.15rem !important;"><code class="lang-python" data-trim>
+				# The examples that I'll talk through will use spaCy, but I've included an example
+				# that uses some transformers based models in the Jupyter notebook on GitHub
+				import json
+				import requests
+				import pandas as pd
+				from sfi import ValueLabel, Data, SFIToolkit
+				import spacy
+				import torch
+				torch.manual_seed(0)
+
+				# This will load the tokenizers and models using the BERT architecture
+				from transformers import BertTokenizer, BertModel
+
+				# This will initialize the tokenizer and download the pretrained model parameters
+				tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
+
+				# We'll also load up the model for spaCy at this time
+				nlp = spacy.load('en_core_web_lg')
+				</code></pre>
+				<aside class="notes">
+					<ul>
+						<li>Also mention that the notebook is slightly different from what will be shown here due to the differences in the APIs.</li>
+						<li>Some of the deep learning models available from Huggingface yield vectors with thousands of dimensions</li>
+						<li>Even with only a few hundred dimensions and using spaCy, you are likely to run into some computing constraints.</li>
+						<li>If you have access to a server with a fair amount of RAM, that would be the best place to do some of this work and then you can use a local machine for model fitting.</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<h3>Get data from source</h3>
+				<pre data-id="code-animation" style="width: fit-content !important; font-size: 1.15rem !important; margin-left: -15% !important;">
+					<code class="lang-python" data-trim data-line-numbers="1-4|6-15|16-26">
+				# List of the URLs containing the data set
+				files = [ "https://raw.githubusercontent.com/DenisPeskov/2020_acl_diplomacy/master/data/test.jsonl",
+				"https://raw.githubusercontent.com/DenisPeskov/2020_acl_diplomacy/master/data/train.jsonl",
+				"https://raw.githubusercontent.com/DenisPeskov/2020_acl_diplomacy/master/data/validation.jsonl" ]
+
+				# Function to handle dropping "variables" that prevent pandas from
+				# reading the JSON object
+				def normalizer(obs: dict, drop: list) -> pd.DataFrame:
+				    # Loop over the "variables" to drop
+				    for i in drop:
+				        # Remove it from the dictionary object
+				        del obs[i]
+				    # Returns the Pandas dataframe
+				    return pd.DataFrame.from_dict(obs)
+
+				# Object to store each of the data frames
+				data = []
+
+				# Loop over each of the files from the URLs above
+				for i in files:
+				    # Get the raw content from the GitHub location
+				    content = requests.get(i).content
+				    # Split the JSON objects by new lines, pass each individual line to json.loads,
+				    # pass the json.loads value to the normalizer function, and
+				    # append the result to the data object defined outside of the loop
+				    [ data.append(normalizer(json.loads(i), [ "players", "game_id" ])) for i in content.decode('utf-8').splitlines() ]
+
+
+				</code></pre>
+			</section>
+			<section>
+				<h3>Prep Data for Stata</h3>
+				<pre data-id="code-animation" style="width: fit-content !important; font-size: 1.15rem !important; margin-left: -15% !important;">
+					<code class="lang-python" data-trim data-line-numbers="1-4|6-7|9-15|17-25|26-36">
+				# Define a couple data mappings for later use
+				labmap = { True: 1, False: 0, 'NOANNOTATION': -1 }
+				cntrys = { 'austria': 0, 'england': 1, 'france': 2, 'germany': 3, 'italy': 4, 'russia': 5, 'turkey': 6 }
+				seasons = { 'Fall': 0, 'Winter': 1, 'Spring': 2 }
+
+				# Combine each of the data frames for each game into one large dataset
+				dataset = pd.concat(data, axis = 0, join = 'inner', ignore_index = True, sort = False)
+
+				# Recast data to appropriate types
+				dataset['game_score'] = dataset['game_score'].astype('int')
+				dataset['sender_labels'] = dataset['sender_labels'].astype('int')
+				dataset['absolute_message_index'] = dataset['absolute_message_index'].astype('int')
+				dataset['relative_message_index'] = dataset['relative_message_index'].astype('int')
+				dataset['game_score_delta'] = dataset['game_score_delta'].astype('int')
+				dataset['years'] = dataset['years'].astype('int')
+
+				# Recodes text labels to numeric values
+				dataset.replace({'receiver_labels': labmap, 'speakers': cntrys, 'receivers': cntrys, 'seasons': seasons}, inplace = True)
+
+				# Creates an indicator for when the receiver correctly identifies the truthfulness of the message
+				dataset['correct'] = (dataset['sender_labels'] == dataset['receiver_labels']).astype('int')
+
+				# Get the number of tokens per message using spaCy's tokenizer
+				dataset['tokens'] = dataset['messages'].apply(lambda x: len(nlp(x)))
+
+				# This stores the spaCy object in a new variable named token
+				dataset['token'] = dataset['messages'].apply(lambda x: nlp(x))
+
+				# Now the data set can be expanded by unique tokens
+				dataset = dataset.explode('token')
+
+				# Make sure the token variable is cast as a string
+				dataset['token'] = dataset['token'].astype('str')
+
+				# Then add ID's for each token
+				dataset['tokenid'] = dataset.groupby('messages').cumcount()
+
+				</code></pre>
+				<aside class="notes">
+					<ul>
+						<li>The first line of code above will take a bit to execute, but it will work to parse the message into individual words and expand the dataset for each word in each message.</li>
+						<li>If you don't recast the token variable it will create an error when you try to load it into Stata</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<h3>Load Data into Stata and Store Embeddings</h3>
+				<pre data-id="code-animation" style="width: fit-content !important; font-size: 1.15rem !important; margin-left: -15% !important;">
+					<code class="lang-python" data-trim data-line-numbers="1-6|7-24|25-40|41-51">
+				# Get the names of the variables
+				varnms = dataset.columns
+
+				# Sets the number of observations based on the messages column
+				Data.setObsTotal(len(dataset['messages']))
+
+				# Create the variables in Stata
+				for var in varnms:
+
+					# The messages and token variables are both string types
+					if var not in [ 'messages', 'token' ]:
+
+						# Adds the numeric variables to the data set
+						Data.addVarLong(var)
+
+					# We'll make the string types strLs just to make sure there won't be any storage issues
+					else:
+
+						# Adds the strL for the string variables
+						Data.addVarStrL(var)
+
+				# Now push the data into Stata
+				Data.store(var = None, obs = None, val = dataset.values.tolist())
+
+				# Create mapping of value labels to variables
+				vallabmap = { 'sender_labels' : labmap, 'receiver_labels': labmap,
+						      'seasons': seasons, 'speakers': cntrys, 'receivers': cntrys }
+
+				# Loop over the dictionary containing the value label mappings
+				for varnm, vallabs in vallabmap.items():
+
+					# Create the value label
+					ValueLabel.createLabel(varnm)
+
+					# Now iterate over the value label mappings and assign to the appropriate value label
+					[ ValueLabel.setLabelValue(varnm, value, str(label)) for label, value in vallabs.items() ]
+
+					# Then assign the value label to the variable
+					ValueLabel.setVarValueLabel(varnm, varnm)
+
+				# Now create the variables to store the dimensions of the vector embedding
+				[ Data.addVarDouble('wembed' + str(i)) for i in range(1, 301) ]
+
+				# Gets all of the tokens and include a sequence ID in the iteration
+				for ob, token in enumerate(dataset['token'].tolist()):
+
+					# Gets the spaCy embedding for this token
+					embed = nlp(token)
+
+					# Store the word vector for this word in the variables we just created
+					[ Data.storeAt("wembed" + str(dim + 1), ob, embed.vector[dim]) for dim in range(0, len(embed.vector)) ]
+
+				</code></pre>
+				<aside class="notes">
+					<ul>
+						<li>There are a few big differences between this script and the Jupyter Notebook.</li>
+						<li>While I could have taken the same approach to constructing the command string and executing it here as I did in the notebook, it was more efficient to build the value labels dynamically.</li>
+						<li>The biggest difference is that doing things this way it is possible to reduce memory overhead by working on a single observation at a time.</li>
+					</ul>
+				</aside>
+			</section>
+			<section>
+				<h3>Fit a Model and Get Document/Message Embeddings Instead</h3>
+				<pre data-id="code-animation" style="width: fit-content !important; font-size: 1.15rem !important; margin-left: -15% !important;">
+					<code class="lang-python" data-trim data-line-numbers="1-3|4-7|8-10|11-21">
+					# You can now fit a model to the data:
+					SFIToolkit.stata("logit correct i.speakers i.seasons i.years i.game_score wembed1-wembed300")
+
+					# These results are fairly noisy, so maybe there would be better luck using document vectors
+					SFIToolkit.stata("drop token tokenid wembed*")
+					SFIToolkit.stata("duplicates drop")
+
+					# Now use the same process used above, but using document vectors
+					[ Data.addVarDouble('docembed' + str(i)) for i in range(1, 301) ]
+
+					# Then iterate over the messages (instead of individual tokens)
+					for ob, token in enumerate(dataset['messages'].tolist()):
+
+						# Gets the spaCy embedding for the message
+						embed = nlp(token)
+
+						# Stores the document/message/sentence embedding for this record
+						[ Data.storeAt("docembed" + str(dim + 1), ob, embed.vector[dim]) for dim in range(0, len(embed.vector)) ]
+
+					# This model fits the data a bit better than the previous model and is also noticably faster.
+					SFIToolkit.stata("logit correct i.speakers i.seasons i.years i.game_score docembed1-docembed300")
+
+				</code></pre>
+				<aside class="notes">
+					<ul>
+						<li>There are a few big differences between this script and the Jupyter Notebook.</li>
+						<li>While I could have taken the same approach to constructing the command string and executing it here as I did in the notebook, it was more efficient to build the value labels dynamically.</li>
+						<li>The biggest difference is that doing things this way it is possible to reduce memory overhead by working on a single observation at a time.</li>
+					</ul>
+				</aside>
+			</section>
+		</section>
+
+
+		<section>
+			<section data-autoslide="4500">
+				<h2>Wrapping Up</h2>
+			</section>
+			<section>
+				<ul>
+					<li>Be mindful of compute resource consumption and availability.</li>
+					<li>The Python API and pystata have different functionality.</li>
+					<li>Look up information about available models and their training contexts.</li>
+					<li>You may need to train the model on your data for it to product informative embeddings.</li>
+				</ul>
+				<aside class="notes">
+					<ul>
+						<li>The Python API will provide a bit more flexibility with compute consumption by allowing you to work in something analogous to a streaming interface (e.g., streaming observations).</li>
+						<li>If you have substantial compute resources available you may be able to do everything in larger batches and can use notebooks effectively there as well.</li>
+						<li>The models in the transformers library all return embeddings with different dimensions.</li>
+						<li>Aside from an awareness of variable limits in Stata, you should also think about how the additional dimensions affect computational performance.</li>
+						<li>More importantly, there are highly context specific models developed and shared openly that can be used to provide a reasonable starting point (e.g., SciBert, etc...) and a lot of work is being done in the medical field with electronic health records.</li>
+						<li>If you need to fine tune or train the last layer or two of a pre-trained model, it may be better to manage that workflow largely in Python to avoid any additional competition for computing resources.</li>
+					</ul>
+				</aside>
+			</section>
+		</section>
+	</div>
+
+</div>
+
+<script src="dist/reveal.js"></script>
+<script src="plugin/zoom/zoom.js"></script>
+<script src="plugin/notes/notes.js"></script>
+<script src="plugin/search/search.js"></script>
+<script src="plugin/markdown/markdown.js"></script>
+<script src="plugin/highlight/highlight.js"></script>
+<script>
+
+	// Also available as an ES module, see:
+	// https://revealjs.com/initialization/
+	Reveal.initialize({
+		controls: true,
+		progress: true,
+		center: true,
+		hash: true,
+
+		// Learn about plugins: https://revealjs.com/plugins/
+		plugins: [ RevealZoom, RevealNotes, RevealSearch, RevealMarkdown, RevealHighlight ]
+	});
+
+</script>
+
+</body>
+</html>

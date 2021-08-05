@@ -55,10 +55,18 @@ torch.manual_seed(0)
 import pandas as pd
 import json
 import requests
+nlp = spacy.load('en_core_web_lg')
+
+# You only need to load these modules/packages if you want to follow the last example from the
+# Jupyter Notebook
 from transformers import BertTokenizer, BertModel
 from simplerepresentations import RepresentationModel
 tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case = False)
-nlp = spacy.load('en_core_web_lg')
 ```
 
 This step will take a little bit to complete as the pre-trained model gets downloaded, but will take care of some of the overhead that isn't directly related to any computational tasks discussed in the talk.
+
+## How to follow
+If you are working directly in Stata, you should be able to use the do file: [stataConference2021.do](https://github.com/wbuchanan/stataConference2021/blob/main/stataConference2021.do).
+
+If you prefer to work in a Jupyter Notebook, you can find a notebook based example here: [stataConference2021.ipynb](https://github.com/wbuchanan/stataConference2021/blob/main/stataConference2021.ipynb)
